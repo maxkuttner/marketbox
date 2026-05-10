@@ -1,0 +1,12 @@
+[project]
+name = "marketbox"
+version = "0.1.0"
+description = "Market Data ETL"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "apache-airflow>=3.2.1",
+    "databento>=0.77.0",
+    "psycopg[binary]>=3.0",
+    "python-dotenv>=1.0",
+]

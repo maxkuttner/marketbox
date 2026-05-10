@@ -1,0 +1,32 @@
+# Python
+.venv
+venv
+__pycache__/
+*.pyc
+*.pyo
+.ruff_cache
+
+# Secrets / local config
+.env
+uv.lock
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode
+.github
+
+# Downloaded market data
+data
+
+# Airflow runtime artifacts
+airflow.db
+airflow.db-shm
+airflow.db-wal
+airflow.cfg
+config/
+.airflow/
+logs/
+standalone_admin_password.txt
+simple_auth_manager_passwords.json.generated

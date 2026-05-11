@@ -11,11 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
@@ -26,11 +21,9 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "${VPS_HOST#*@}" >> ~/.ssh/known_hosts
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
 
       - name: Sync to VPS
         run: |
-          rsync -az --exclude='airflow.cfg' dags/ ${{ secrets.VPS_HOST }}:/home/max/stack/dags/
-          [ -d src ] && rsync -az src/ ${{ secrets.VPS_HOST }}:/home/max/stack/src/
+          rsync -avz --exclude='airflow.cfg' dags/ ${{ secrets.VPS_HOST }}:/home/max/stack/dags/
+          [ -d src ] && rsync -avz src/ ${{ secrets.VPS_HOST }}:/home/max/stack/src/

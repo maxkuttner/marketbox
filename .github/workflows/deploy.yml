@@ -28,4 +28,4 @@ jobs:
       - name: Sync to VPS
         run: |
           rsync -avz --exclude='airflow.cfg' dags/ ${{ secrets.VPS_HOST }}:/home/max/stack/dags/
-          [ -d src ] && rsync -avz src/ ${{ secrets.VPS_HOST }}:/home/max/stack/src/
+          if [ -d src ]; then rsync -avz src/ ${{ secrets.VPS_HOST }}:/home/max/stack/src/; fi

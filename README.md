@@ -4,14 +4,14 @@ Market Data ETL for projects.
 
 ## Deployment
 
-Airflow runs as a systemd service on a Fedora VPS, accessible over Tailscale.
+Airflow runs as a systemd service on a VPS, accessible over Tailscale.
 
 ### First-time setup
 
 ```bash
-./setup_vps.sh max@<tailscale-ip>
-scp .env max@<tailscale-ip>:/home/max/stack/.env
-ssh max@<tailscale-ip> 'sudo systemctl start airflow'
+./setup_vps.sh <user>@<server> 
+scp .env <user>@<server>:/opt/marketbox/.env
+ssh <user>@<server> 'sudo systemctl start airflow'
 ```
 
 Three GitHub secrets are required for CI:

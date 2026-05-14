@@ -27,6 +27,7 @@ ssh -t "${VPS}" "
 "
 
 echo ""
-echo "Next: copy your .env then start the service"
+echo "Next: copy your .env, run migrations, then start the service"
 echo "  scp .env ${VPS}:${REMOTE_DIR}/.env"
+echo "  ssh ${VPS} 'cd ${REMOTE_DIR} && .venv/bin/python migrate.py'"
 echo "  ssh ${VPS} 'sudo systemctl start airflow'"

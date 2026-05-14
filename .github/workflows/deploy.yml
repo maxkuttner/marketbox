@@ -28,4 +28,9 @@ jobs:
       - name: Sync to VPS
         run: |
           rsync -avz --exclude='airflow.cfg' dags/ ${{ secrets.VPS_HOST }}:/home/max/stack/dags/
+          rsync -avz migrations/ ${{ secrets.VPS_HOST }}:/home/max/stack/migrations/
+          rsync -avz migrate.py ${{ secrets.VPS_HOST }}:/home/max/stack/migrate.py
           if [ -d src ]; then rsync -avz src/ ${{ secrets.VPS_HOST }}:/home/max/stack/src/; fi
+
+      - name: Run migrations
+        run: ssh ${{ secrets.VPS_HOST }} "cd /home/max/stack && .venv/bin/python migrate.py"

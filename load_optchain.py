@@ -81,15 +81,30 @@ def already_loaded(conn: psycopg.Connection) -> set[str]:
     return {r[0] for r in rows}
 
 
+def _iter_rows(df):
+    import math
+    cols = df.columns.tolist()
+    for row in df.itertuples(index=False):
+        yield (
+            row.ts_event,
+            str(row.symbol),
+            int(row.instrument_id) if "instrument_id" in cols else None,
+            float(row.open)   if "open"   in cols and not math.isnan(row.open)   else None,
+            float(row.high)   if "high"   in cols and not math.isnan(row.high)   else None,
+            float(row.low)    if "low"    in cols and not math.isnan(row.low)    else None,
+            float(row.close)  if "close"  in cols and not math.isnan(row.close)  else None,
+            int(row.volume)   if "volume" in cols else None,
+        )
+
+
 def load_file(conn: psycopg.Connection, path: Path, table: str) -> int:
     import databento as db
 
     store = db.DBNStore.from_file(str(path))
     df = store.to_df(map_symbols=True)
-    del store  # free compressed data immediately
+    del store
 
     if df.empty:
-        del df
         return 0
 
     df = df.reset_index()
@@ -97,36 +112,35 @@ def load_file(conn: psycopg.Connection, path: Path, table: str) -> int:
     if "symbol" not in df.columns:
         raise RuntimeError(f"No symbol column found in {path.name}. Columns: {list(df.columns)}")
 
-    rows = [
-        (
-            row["ts_event"],
-            str(row["symbol"]),
-            int(row["instrument_id"]) if "instrument_id" in df.columns else None,
-            float(row["open"])  if "open"  in df.columns and row["open"]  == row["open"] else None,
-            float(row["high"])  if "high"  in df.columns and row["high"]  == row["high"] else None,
-            float(row["low"])   if "low"   in df.columns and row["low"]   == row["low"]  else None,
-            float(row["close"]) if "close" in df.columns and row["close"] == row["close"] else None,
-            int(row["volume"])  if "volume" in df.columns else None,
-        )
-        for _, row in df.iterrows()
-    ]
-    del df  # free DataFrame before DB insert
+    staging = f"_stage_{table}"
+    row_count = 0
 
     with conn.transaction(), conn.cursor() as cur:
-        cur.executemany(
+        cur.execute(
+            f"CREATE TEMP TABLE {staging} (LIKE {table} INCLUDING DEFAULTS) ON COMMIT DROP"
+        )
+        with cur.copy(
+            f"COPY {staging} (ts_event, symbol, instrument_id, open, high, low, close, volume) FROM STDIN"
+        ) as copy:
+            for row in _iter_rows(df):
+                copy.write_row(row)
+                row_count += 1
+
+        del df
+
+        cur.execute(
             f"""
             INSERT INTO {table} (ts_event, symbol, instrument_id, open, high, low, close, volume)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            SELECT ts_event, symbol, instrument_id, open, high, low, close, volume FROM {staging}
             ON CONFLICT (ts_event, symbol) DO NOTHING
-            """,
-            rows,
+            """
         )
         cur.execute(
             "INSERT INTO _loaded_files (file_path, row_count) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            (str(path), len(rows)),
+            (str(path), row_count),
         )
 
-    return len(rows)
+    return row_count
 
 
 def parse_args():

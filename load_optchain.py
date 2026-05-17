@@ -116,6 +116,7 @@ def load_file(conn: psycopg.Connection, path: Path, table: str) -> int:
     row_count = 0
 
     with conn.transaction(), conn.cursor() as cur:
+        cur.execute("SET LOCAL temp_buffers = '64MB'")
         cur.execute(
             f"CREATE TEMP TABLE {staging} (LIKE {table} INCLUDING DEFAULTS) ON COMMIT DROP"
         )

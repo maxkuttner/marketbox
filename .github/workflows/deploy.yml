@@ -21,16 +21,20 @@ jobs:
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
           echo "StrictHostKeyChecking no" >> ~/.ssh/config
 
       - name: Sync to VPS
         run: |
-          rsync -avz --exclude='airflow.cfg' dags/ ${{ secrets.VPS_HOST }}:/home/max/stack/dags/
-          rsync -avz migrations/ ${{ secrets.VPS_HOST }}:/home/max/stack/migrations/
-          rsync -avz migrate.py ${{ secrets.VPS_HOST }}:/home/max/stack/migrate.py
-          if [ -d src ]; then rsync -avz src/ ${{ secrets.VPS_HOST }}:/home/max/stack/src/; fi
+          rsync -avz dags/          ${{ secrets.VPS_HOST }}:/opt/airflow/dags/
+          rsync -avz migrations/    ${{ secrets.VPS_HOST }}:/opt/airflow/migrations/
+          rsync -avz migrate.py     ${{ secrets.VPS_HOST }}:/opt/airflow/migrate.py
+          rsync -avz fetch_optchain.py load_optchain.py \
+                                    ${{ secrets.VPS_HOST }}:/opt/airflow/
 
       - name: Run migrations
-        run: ssh ${{ secrets.VPS_HOST }} "cd /home/max/stack && .venv/bin/python migrate.py"
+        run: ssh ${{ secrets.VPS_HOST }} "cd /opt/airflow && .venv/bin/python migrate.py"
+
+      - name: Restart Airflow
+        run: ssh ${{ secrets.VPS_HOST }} "sudo systemctl restart airflow"

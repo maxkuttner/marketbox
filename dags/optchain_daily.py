@@ -10,6 +10,7 @@ from airflow.operators.bash import BashOperator
 from airflow.sdk import dag
 
 PROJECT_ROOT = str(Path(os.environ.get("AIRFLOW_HOME", Path(__file__).parent.parent)))
+PYTHON       = str(Path(PROJECT_ROOT) / ".venv" / "bin" / "python")
 
 SCHEDULE = "0 6 * * *"
 SYMBOL   = "SPY"
@@ -26,13 +27,13 @@ def optchain_daily():
 
     fetch = BashOperator(
         task_id="fetch_optchain",
-        bash_command=f"python fetch_optchain.py --symbol {SYMBOL}",
+        bash_command=f"{PYTHON} fetch_optchain.py --symbol {SYMBOL}",
         cwd=PROJECT_ROOT,
     )
 
     load = BashOperator(
         task_id="load_optchain",
-        bash_command=f"python load_optchain.py --symbol {SYMBOL}",
+        bash_command=f"{PYTHON} load_optchain.py --symbol {SYMBOL}",
         cwd=PROJECT_ROOT,
     )
 

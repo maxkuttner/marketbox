@@ -3,11 +3,11 @@ Daily Airflow DAG: fetch latest SPY option chain data from Databento and load in
 """
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from airflow.operators.bash import BashOperator
-from airflow.sdk import dag
+from airflow.decorators import dag
 
 PROJECT_ROOT = str(Path(os.environ.get("AIRFLOW_HOME", Path(__file__).parent.parent)))
 PYTHON       = str(Path(PROJECT_ROOT) / ".venv" / "bin" / "python")
@@ -29,12 +29,16 @@ def optchain_daily():
         task_id="fetch_optchain",
         bash_command=f"{PYTHON} fetch_optchain.py --symbol {SYMBOL}",
         cwd=PROJECT_ROOT,
+        retries=2,
+        retry_delay=timedelta(minutes=10),
     )
 
     load = BashOperator(
         task_id="load_optchain",
         bash_command=f"{PYTHON} load_optchain.py --symbol {SYMBOL}",
         cwd=PROJECT_ROOT,
+        retries=2,
+        retry_delay=timedelta(minutes=10),
     )
 
     fetch >> load

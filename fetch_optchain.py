@@ -21,6 +21,7 @@ Examples:
 import argparse
 import logging
 import os
+import re
 import shutil
 import sys
 import time
@@ -29,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import databento as db
+from databento.common.error import BentoClientError
 from dotenv import load_dotenv
 
 logging.basicConfig(
@@ -68,7 +70,7 @@ def estimate_cost(client: db.Historical, parent_symbol: str, schema: str, start:
         stype_in="parent",
         schema=schema,
         start=start.isoformat(),
-        end=(end + timedelta(days=1)).isoformat(),
+        end=end.isoformat(),
     )
     return float(cost)
 
@@ -103,6 +105,12 @@ def wait_for_job(client: db.Historical, job_id: str, since: datetime, poll_secon
             return job
 
         time.sleep(poll_seconds)
+
+
+def _schema_available_end(error: BentoClientError) -> date | None:
+    """Parse the exclusive end date out of a data_schema_not_fully_available error."""
+    m = re.search(r"and (\d{4}-\d{2}-\d{2})T", str(error))
+    return date.fromisoformat(m.group(1)) if m else None
 
 
 def get_latest_downloaded_date(files_dir: Path) -> date | None:
@@ -146,10 +154,8 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     client = get_client()
-    available_end = get_dataset_end(client)
 
-    end_date = date.fromisoformat(args.end) if args.end else date.today() - timedelta(days=1)
-    end_date = min(end_date, available_end - timedelta(days=1))
+    end_date = date.fromisoformat(args.end) if args.end else date.today()
 
     if args.full_history:
         start_date = date.fromisoformat(args.start) if args.start else get_dataset_start(client)
@@ -159,8 +165,8 @@ def main():
         files_dir = output_dir / "files"
         latest = get_latest_downloaded_date(files_dir)
         if latest:
-            log.info(f"Latest file covers up to {latest}; fetching from {latest + timedelta(days=1)}")
-            start_date = latest + timedelta(days=1)
+            log.info(f"Latest batch ended at {latest}; fetching from {latest}")
+            start_date = latest
         else:
             start_date = end_date - timedelta(days=13)
 
@@ -176,7 +182,23 @@ def main():
 
     if not args.skip_cost_check:
         log.info("Estimating cost...")
-        cost = estimate_cost(client, parent_symbol, args.schema, start_date, end_date)
+        try:
+            cost = estimate_cost(client, parent_symbol, args.schema, start_date, end_date)
+        except BentoClientError as e:
+            if "data_no_data_found_for_request" in str(e):
+                log.info("No data available for this date range yet; will retry tomorrow.")
+                return
+            if "data_schema_not_fully_available" not in str(e):
+                raise
+            schema_end = _schema_available_end(e)
+            if schema_end is None:
+                raise
+            end_date = min(end_date, schema_end - timedelta(days=1))
+            log.info(f"Schema availability capped end_date to {end_date}")
+            if start_date > end_date:
+                log.info(f"Nothing to fetch: start {start_date} is after capped end {end_date}")
+                return
+            cost = estimate_cost(client, parent_symbol, args.schema, start_date, end_date)
         log.info(f"Estimated cost: ${cost:.4f}")
         if args.max_cost is not None and cost > args.max_cost:
             raise RuntimeError(f"Estimated cost ${cost:.4f} exceeds --max-cost ${args.max_cost:.4f}")
@@ -187,7 +209,13 @@ def main():
 
     submitted_at = datetime.now(timezone.utc)
     log.info("Submitting batch job...")
-    job_id = submit_job(client, parent_symbol, args.schema, start_date, end_date)
+    try:
+        job_id = submit_job(client, parent_symbol, args.schema, start_date, end_date)
+    except BentoClientError as e:
+        if "data_no_data_found_for_request" in str(e) or "data_schema_not_fully_available" in str(e):
+            log.info("No data available for this date range yet; will retry tomorrow.")
+            return
+        raise
     log.info(f"Job submitted: {job_id}")
 
     job = wait_for_job(client, job_id=job_id, since=submitted_at - timedelta(minutes=5), poll_seconds=args.poll_seconds)

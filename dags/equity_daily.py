@@ -19,7 +19,7 @@ SYMBOL   = "SPY"
 @dag(
     dag_id="equity_daily",
     schedule=SCHEDULE,
-    start_date=datetime(2026, 5, 22, tzinfo=timezone.utc),
+    start_date=datetime(2026, 5, 21, tzinfo=timezone.utc),
     catchup=False,
     tags=["marketbox", "equity"],
 )

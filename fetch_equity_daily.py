@@ -131,7 +131,8 @@ def main():
             start_date = latest + timedelta(days=1)
             log.info(f"Latest file ended at {latest}; fetching from {start_date}")
         else:
-            start_date = end_date - timedelta(days=13)
+            start_date = get_dataset_start(client)
+            log.info(f"No existing files; fetching full history from {start_date}")
 
     if start_date > end_date:
         log.info(f"Nothing to fetch: start {start_date} is after end {end_date}")

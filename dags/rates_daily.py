@@ -1,9 +1,5 @@
 """
-Daily Airflow DAG: compute implied volatility from option chain + equity + rates.
-
-Runs at 07:00 UTC — one hour after equity and optchain DAGs (06:00 UTC)
-to ensure both are loaded before IV is computed. Rates must be loaded
-by the rates_daily DAG beforehand.
+Daily Airflow DAG: fetch DTB3 T-bill rates from FRED and load into PostgreSQL.
 """
 
 import os
@@ -16,27 +12,35 @@ from airflow.decorators import dag
 PROJECT_ROOT = str(Path(os.environ.get("AIRFLOW_HOME", Path(__file__).parent.parent)))
 PYTHON       = str(Path(PROJECT_ROOT) / ".venv" / "bin" / "python")
 
-SCHEDULE = "0 7 * * *"
+SCHEDULE = "0 6 * * *"
 
 
 @dag(
-    dag_id="iv_daily",
+    dag_id="rates_daily",
     schedule=SCHEDULE,
     start_date=datetime(2026, 5, 22, tzinfo=timezone.utc),
     catchup=False,
-    tags=["marketbox", "iv"],
+    tags=["marketbox", "rates"],
 )
-def iv_daily():
+def rates_daily():
 
-    compute_iv = BashOperator(
-        task_id="compute_iv",
-        bash_command=f"{PYTHON} compute_iv.py",
+    fetch_rates = BashOperator(
+        task_id="fetch_rates",
+        bash_command=f"{PYTHON} fetch_rates.py",
         cwd=PROJECT_ROOT,
         retries=2,
         retry_delay=timedelta(minutes=10),
     )
 
-    compute_iv
+    load_rates = BashOperator(
+        task_id="load_rates",
+        bash_command=f"{PYTHON} load_rates.py",
+        cwd=PROJECT_ROOT,
+        retries=2,
+        retry_delay=timedelta(minutes=10),
+    )
+
+    fetch_rates >> load_rates
 
 
-iv_daily()
+rates_daily()

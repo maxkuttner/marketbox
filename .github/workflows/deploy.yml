@@ -29,11 +29,17 @@ jobs:
         run: |
           rsync -avz dags/          ${{ secrets.VPS_HOST }}:/opt/airflow/dags/
           rsync -avz migrations/    ${{ secrets.VPS_HOST }}:/opt/airflow/migrations/
-          rsync -avz migrate.py     ${{ secrets.VPS_HOST }}:/opt/airflow/migrate.py
+          rsync -avz migrate.py pyproject.toml uv.lock \
+                                    ${{ secrets.VPS_HOST }}:/opt/airflow/
           rsync -avz fetch_optchain.py load_optchain.py \
                     fetch_equity_daily.py load_equity_daily.py \
                     fetch_rates.py load_rates.py compute_iv.py \
                                     ${{ secrets.VPS_HOST }}:/opt/airflow/
+
+      - name: Sync dependencies
+        run: |
+          ssh ${{ secrets.VPS_HOST }} "which uv || curl -LsSf https://astral.sh/uv/install.sh | sh"
+          ssh ${{ secrets.VPS_HOST }} "cd /opt/airflow && uv sync --frozen"
 
       - name: Run migrations
         run: ssh ${{ secrets.VPS_HOST }} "cd /opt/airflow && .venv/bin/python migrate.py"

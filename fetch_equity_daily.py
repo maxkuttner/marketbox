@@ -44,7 +44,7 @@ log = logging.getLogger("airflow.task")
 
 load_dotenv()
 
-DATASET = "DBEQ.BASIC"
+DATASET = "ARCX.PILLAR"
 SCHEMA = "ohlcv-1d"
 DEFAULT_MAX_COST = 1.00
 

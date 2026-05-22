@@ -9,4 +9,6 @@ dependencies = [
     "databento>=0.77.0",
     "psycopg[binary]>=3.0",
     "python-dotenv>=1.0",
+    "requests>=2.32",
+    "scipy>=1.13",
 ]

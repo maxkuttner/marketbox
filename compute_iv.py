@@ -78,6 +78,7 @@ def bs_price(S: float, K: float, T: float, r: float, q: float, sigma: float, fla
 def implied_vol(
     price: float, S: float, K: float, T: float, r: float, q: float, flag: str
 ) -> float | None:
+    """ Solve for iv given BS with dividends. Solver: Brent"""
     if T <= 0 or price <= 0 or S <= 0 or K <= 0:
         return None
     # Discard prices at or below discounted intrinsic (no IV solution possible)
@@ -102,6 +103,9 @@ def get_pending_dates(conn: psycopg.Connection, symbol: str | None) -> list[date
         f"""
         SELECT DISTINCT o.ts_event::date
         FROM option_ohlcv_1d_v o
+        JOIN equity_ohlcv_1d e
+            ON e.ts_event::date = o.ts_event::date
+           AND e.symbol = o.root_symbol
         WHERE o.ts_event::date NOT IN (SELECT DISTINCT trade_date FROM {TABLE})
           AND o.ts_event::date IN (SELECT trade_date FROM rates_1d)
         {sym_filter}

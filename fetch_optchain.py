@@ -170,8 +170,8 @@ def main():
         else:
             start_date = end_date - timedelta(days=13)
 
-    if start_date > end_date:
-        log.info(f"Nothing to fetch: start {start_date} is after end {end_date}")
+    if start_date >= end_date:
+        log.info(f"Nothing to fetch: start {start_date} is at or after end {end_date}")
         return
 
     log.info(f"Dataset: {DATASET}")

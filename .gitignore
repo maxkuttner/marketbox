@@ -8,6 +8,7 @@ __pycache__/
 
 # Secrets / local config
 .env
+uv.lock
 
 # macOS
 .DS_Store

@@ -29,7 +29,7 @@ jobs:
         run: |
           rsync -avz dags/          ${{ secrets.VPS_HOST }}:/opt/airflow/dags/
           rsync -avz migrations/    ${{ secrets.VPS_HOST }}:/opt/airflow/migrations/
-          rsync -avz migrate.py pyproject.toml uv.lock \
+          rsync -avz migrate.py pyproject.toml \
                                     ${{ secrets.VPS_HOST }}:/opt/airflow/
           rsync -avz fetch_optchain.py load_optchain.py \
                     fetch_equity_daily.py load_equity_daily.py \
@@ -38,8 +38,17 @@ jobs:
 
       - name: Sync dependencies
         run: |
-          ssh ${{ secrets.VPS_HOST }} "which uv || curl -LsSf https://astral.sh/uv/install.sh | sh"
-          ssh ${{ secrets.VPS_HOST }} "cd /opt/airflow && uv sync --frozen"
+          AIRFLOW_VERSION=2.10.3
+          PYTHON_VERSION=$(ssh ${{ secrets.VPS_HOST }} "python3.12 --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2")
+          CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+          ssh ${{ secrets.VPS_HOST }} "VIRTUAL_ENV=/opt/airflow/.venv /opt/airflow/.venv/bin/uv pip install \
+            'apache-airflow==${AIRFLOW_VERSION}' \
+            'databento>=0.77.0' \
+            'psycopg[binary]>=3.0' \
+            'python-dotenv>=1.0' \
+            'requests>=2.32' \
+            'scipy>=1.13' \
+            --constraint '${CONSTRAINT_URL}'"
 
       - name: Run migrations
         run: ssh ${{ secrets.VPS_HOST }} "cd /opt/airflow && .venv/bin/python migrate.py"

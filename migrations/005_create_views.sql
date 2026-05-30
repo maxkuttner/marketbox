@@ -43,7 +43,7 @@ SELECT
     o.high,
     o.low,
     o.close,
-    (o.high + o.low) / 2.0                      AS mid,
+    (o.high + o.low) / 2.0                      AS mid_range,
     o.volume,
 
     o.instrument_id

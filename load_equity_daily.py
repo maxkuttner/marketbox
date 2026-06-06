@@ -3,7 +3,7 @@
 Deserialize Databento .dbn.zst equity files and load them into PostgreSQL.
 
 Examples:
-  export DB_HOST=localhost DB_PORT=5432 DB_NAME=marketbox DB_USER=max DB_PASSWORD=...
+  export DB_HOST=localhost DB_PORT=5432 DB_NAME=mds DB_USER=max DB_PASSWORD=...
 
   # Dry run — list files that would be loaded
   python load_equity_daily.py --symbol SPY --dry-run

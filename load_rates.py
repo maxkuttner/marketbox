@@ -3,7 +3,7 @@
 Load DTB3 rate CSV files into PostgreSQL rates_1d table.
 
 Examples:
-  export DB_HOST=localhost DB_PORT=5432 DB_NAME=marketbox DB_USER=max DB_PASSWORD=...
+  export DB_HOST=localhost DB_PORT=5432 DB_NAME=mds DB_USER=max DB_PASSWORD=...
 
   # Dry run — list files that would be loaded
   python load_rates.py --dry-run

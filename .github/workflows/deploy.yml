@@ -28,9 +28,7 @@ jobs:
       - name: Sync to VPS
         run: |
           rsync -avz dags/          ${{ secrets.VPS_HOST }}:/opt/airflow/dags/
-          rsync -avz migrations/    ${{ secrets.VPS_HOST }}:/opt/airflow/migrations/
-          rsync -avz migrate.py pyproject.toml \
-                                    ${{ secrets.VPS_HOST }}:/opt/airflow/
+          rsync -avz pyproject.toml ${{ secrets.VPS_HOST }}:/opt/airflow/
           rsync -avz fetch_optchain.py load_optchain.py \
                     fetch_equity_daily.py load_equity_daily.py \
                     fetch_rates.py load_rates.py compute_iv.py \
@@ -50,8 +48,7 @@ jobs:
             'scipy>=1.13' \
             --constraint '${CONSTRAINT_URL}'"
 
-      - name: Run migrations
-        run: ssh ${{ secrets.VPS_HOST }} "cd /opt/airflow && .venv/bin/python migrate.py"
+      # Schema is owned and migrated by the `mdm` repo, not this app.
 
       - name: Restart Airflow
         run: ssh ${{ secrets.VPS_HOST }} "sudo systemctl restart airflow"

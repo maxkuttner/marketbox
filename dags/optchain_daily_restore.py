@@ -17,6 +17,8 @@ SYMBOL = "SPY"
 
 @dag(
     dag_id="optchain_daily_restore",
+    schedule=None,
+    start_date=datetime(2026, 5, 9, tzinfo=timezone.utc),
     catchup=False,
     tags=["marketbox", "options"],
 )

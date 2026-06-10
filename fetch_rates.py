@@ -60,7 +60,7 @@ def get_latest_downloaded_date(files_dir: Path) -> date | None:
 
 def fetch_fred(start: date, end: date) -> list[tuple[date, float]]:
     log.info("Downloading DTB3 from FRED...")
-    resp = requests.get(FRED_URL, timeout=30)
+    resp = requests.get(FRED_URL, timeout=1000)
     resp.raise_for_status()
 
     rows = []

@@ -3,7 +3,12 @@
 Fetch DTB3 (3-Month T-Bill Secondary Market Rate) from FRED and save as CSV.
 
 DTB3 is the standard risk-free rate used in Black-Scholes pricing.
-FRED is a free public API — no API key or cost required.
+
+Uses the official FRED API (api.stlouisfed.org), which requires a free API
+key in the FRED_API_KEY environment variable. Get one at
+https://fredaccount.stlouisfed.org/apikeys. We deliberately avoid the public
+fredgraph.csv graph endpoint: it is fronted by Akamai, which silently drops
+requests from datacenter IPs (e.g. our Hetzner VPS).
 
 Examples:
   # Incremental (default: fetch what's missing)
@@ -20,8 +25,8 @@ Examples:
 """
 
 import argparse
-import io
 import logging
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -36,7 +41,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("airflow.task")
 
-FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3"
+FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
 SERIES_ID = "DTB3"
 DATASET_START = date(1954, 1, 4)
 
@@ -59,25 +64,37 @@ def get_latest_downloaded_date(files_dir: Path) -> date | None:
 
 
 def fetch_fred(start: date, end: date) -> list[tuple[date, float]]:
-    log.info("Downloading DTB3 from FRED...")
-    resp = requests.get(FRED_URL, timeout=1000)
+    api_key = os.environ.get("FRED_API_KEY")
+    if not api_key:
+        raise SystemExit(
+            "FRED_API_KEY is not set. Get a free key at "
+            "https://fredaccount.stlouisfed.org/apikeys and add it to the environment."
+        )
+
+    log.info("Downloading DTB3 from FRED API...")
+    resp = requests.get(
+        FRED_API_URL,
+        params={
+            "series_id": SERIES_ID,
+            "api_key": api_key,
+            "file_type": "json",
+            "observation_start": start.isoformat(),
+            "observation_end": end.isoformat(),
+        },
+        timeout=60,
+    )
     resp.raise_for_status()
 
     rows = []
-    for line in io.StringIO(resp.text):
-        line = line.strip()
-        if not line or line.startswith("DATE"):
-            continue
-        parts = line.split(",")
-        if len(parts) != 2 or parts[1] == ".":
+    for obs in resp.json().get("observations", []):
+        if obs.get("value") in (None, "", "."):
             continue
         try:
-            d = date.fromisoformat(parts[0])
-            v = float(parts[1])
-        except ValueError:
+            d = date.fromisoformat(obs["date"])
+            v = float(obs["value"])
+        except (KeyError, ValueError):
             continue
-        if start <= d <= end:
-            rows.append((d, v))
+        rows.append((d, v))
 
     return rows
 

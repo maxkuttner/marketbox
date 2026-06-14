@@ -155,13 +155,21 @@ def _venue(exchange):
 
 # --- Databento fetch ------------------------------------------------------
 
-def _recent_range():
-    end = date.today()
-    return (end - timedelta(days=5)), end
+def _range_for(client, dataset, days=3):
+    """A small query window ending at the dataset's last available date.
+
+    Databento historical data lags real time, so we can't use `today` as the
+    end — query it from the dataset range and look back a few days to land on
+    the most recent definition snapshot.
+    """
+    r = client.metadata.get_dataset_range(dataset=dataset)
+    end_raw = r["end"] if isinstance(r, dict) else getattr(r, "end", r)
+    end = datetime.fromisoformat(str(end_raw).replace("Z", "+00:00")).date()
+    return (end - timedelta(days=days)), end
 
 
 def estimate_cost(client, dataset, symbols, stype_in):
-    start, end = _recent_range()
+    start, end = _range_for(client, dataset)
     try:
         return float(client.metadata.get_cost(
             dataset=dataset, symbols=symbols, stype_in=stype_in,
@@ -175,7 +183,7 @@ def estimate_cost(client, dataset, symbols, stype_in):
 
 def fetch_definitions(client, dataset, symbols, stype_in):
     """Return the latest definition snapshot per raw_symbol as list[dict]."""
-    start, end = _recent_range()
+    start, end = _range_for(client, dataset)
     try:
         store = client.timeseries.get_range(
             dataset=dataset, symbols=symbols, stype_in=stype_in,

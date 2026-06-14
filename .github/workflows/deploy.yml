@@ -27,12 +27,14 @@ jobs:
 
       - name: Sync to VPS
         run: |
-          rsync -avz dags/          ${{ secrets.VPS_HOST }}:/opt/airflow/dags/
-          rsync -avz pyproject.toml ${{ secrets.VPS_HOST }}:/opt/airflow/
-          rsync -avz fetch_optchain.py load_optchain.py \
-                    fetch_equity_daily.py load_equity_daily.py \
-                    fetch_rates.py load_rates.py compute_iv.py \
-                                    ${{ secrets.VPS_HOST }}:/opt/airflow/
+          # Sync the whole project (excluding VCS + runtime state). New scripts
+          # and DAGs ship automatically — no hardcoded file list to maintain.
+          # No --delete: /opt/airflow also holds runtime state (.venv, .env,
+          # airflow.db) that is not in the repo and must be preserved.
+          rsync -avz \
+            --exclude='.git' --exclude='.github' --exclude='.venv' \
+            --exclude='.env' --exclude='data' --exclude='logs' --exclude='__pycache__' \
+            ./ ${{ secrets.VPS_HOST }}:/opt/airflow/
 
       - name: Sync dependencies
         run: |

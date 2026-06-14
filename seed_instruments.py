@@ -28,6 +28,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 
 import databento as db
+import pandas as pd
 import psycopg
 from databento.common.error import BentoClientError
 from dotenv import load_dotenv
@@ -79,8 +80,6 @@ def get_ods_conn() -> psycopg.Connection:
 
 # --- value coercion (robust to to_df pretty/raw forms) --------------------
 
-UINT64_MAX = 18446744073709551615
-
 
 def _num(v):
     if v is None:
@@ -105,21 +104,29 @@ def _price(v):
 
 
 def _to_date(v):
-    """expiration/activation: pandas Timestamp, ns int, NaT, or unset sentinel."""
-    if v is None:
+    """expiration/activation -> date, or None if unset.
+
+    In the pretty `to_df` form unset timestamps arrive as NaT and real ones as
+    pandas Timestamps; in the raw form they're ns-since-epoch ints with an
+    out-of-range sentinel for "unset". pd.isna() catches NaT/None/NaN; the
+    year bound rejects the raw sentinel (which lands far in the future).
+    """
+    if pd.isna(v):
         return None
     if hasattr(v, "to_pydatetime"):     # pandas Timestamp
         try:
-            return v.to_pydatetime().date()
+            d = v.to_pydatetime().date()
         except (ValueError, OverflowError):
             return None
-    f = _num(v)
-    if f is None or f <= 0 or f >= UINT64_MAX:
-        return None
-    try:
-        return datetime.fromtimestamp(f / 1e9, tz=timezone.utc).date()
-    except (ValueError, OverflowError, OSError):
-        return None
+    else:
+        f = _num(v)
+        if f is None or f <= 0:
+            return None
+        try:
+            d = datetime.fromtimestamp(f / 1e9, tz=timezone.utc).date()
+        except (ValueError, OverflowError, OSError):
+            return None
+    return d if d.year <= 2100 else None
 
 
 def _decimals(tick):

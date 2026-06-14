@@ -15,6 +15,7 @@ uv.lock
 
 # IDE
 .vscode
+.idea/
 
 # Downloaded market data
 data

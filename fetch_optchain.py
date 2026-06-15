@@ -155,23 +155,28 @@ def main():
 
     client = get_client()
 
-    end_date = date.fromisoformat(args.end) if args.end else date.today()
+    # end is always Databento's last available date for the dataset. Its range
+    # end is exclusive, so it *is* the last available date; querying past it
+    # raises data_start_after_available_end.
+    end_date = date.fromisoformat(args.end) if args.end else get_dataset_end(client)
 
     if args.full_history:
         start_date = date.fromisoformat(args.start) if args.start else get_dataset_start(client)
     elif args.start:
         start_date = date.fromisoformat(args.start)
     else:
+        # incremental: resume from the exclusive end of the last stored batch
         files_dir = output_dir / "files"
         latest = get_latest_downloaded_date(files_dir)
-        if latest:
-            log.info(f"Latest batch ended at {latest}; fetching from {latest}")
-            start_date = latest
-        else:
-            start_date = end_date - timedelta(days=13)
+        start_date = latest if latest else end_date - timedelta(days=13)
 
+    # end is exclusive, so start == end means what's stored already reaches the
+    # last available date — nothing new to fetch.
     if start_date >= end_date:
-        log.info(f"Nothing to fetch: start {start_date} is at or after end {end_date}")
+        log.info(
+            f"Up to date: stored through {start_date}, dataset's last available "
+            f"date is {end_date}. Nothing to fetch."
+        )
         return
 
     log.info(f"Dataset: {DATASET}")

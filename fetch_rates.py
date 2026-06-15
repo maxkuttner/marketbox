@@ -32,6 +32,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +41,8 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 log = logging.getLogger("airflow.task")
+
+load_dotenv()
 
 FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
 SERIES_ID = "DTB3"

@@ -60,6 +60,20 @@ def get_dataset_start(client: db.Historical) -> date:
     return datetime.fromisoformat(r["start"].replace("Z", "+00:00")).date()
 
 
+def get_dataset_end(client: db.Historical) -> date:
+    """Databento's last available (inclusive) date for our schema.
+
+    Read the per-schema range for SCHEMA: the daily bars lag the dataset-level
+    range (which tracks higher-frequency schemas like trades/mbo), so using the
+    dataset-level end would overshoot into data_schema_not_fully_available. The
+    schema end is exclusive, so the last available bar is the day before it.
+    """
+    r = client.metadata.get_dataset_range(dataset=DATASET)
+    rng = r.get("schema", {}).get(SCHEMA, r)  # fall back to dataset-level range
+    exclusive_end = datetime.fromisoformat(rng["end"].replace("Z", "+00:00")).date()
+    return exclusive_end - timedelta(days=1)
+
+
 def estimate_cost(client: db.Historical, symbol: str, start: date, end: date) -> float:
     cost = client.metadata.get_cost(
         dataset=DATASET,
@@ -95,7 +109,7 @@ def parse_args():
     )
     p.add_argument("--symbol", default="SPY", help="Equity symbol (default: SPY)")
     p.add_argument("--start", help="Start date YYYY-MM-DD")
-    p.add_argument("--end", help="End date YYYY-MM-DD, inclusive (default: yesterday)")
+    p.add_argument("--end", help="End date YYYY-MM-DD, inclusive (default: Databento's last available date)")
     p.add_argument("--output-dir", help="Output directory")
     p.add_argument("--full-history", action="store_true", help="Fetch from dataset start")
     p.add_argument(
@@ -118,8 +132,9 @@ def main():
 
     client = get_client()
 
-    # Default end: yesterday — today's data is often not settled yet
-    end_date = date.fromisoformat(args.end) if args.end else date.today() - timedelta(days=1)
+    # Default end: Databento's last available date (never today — the data
+    # lags real time, and querying past it errors).
+    end_date = date.fromisoformat(args.end) if args.end else get_dataset_end(client)
 
     if args.full_history:
         start_date = date.fromisoformat(args.start) if args.start else get_dataset_start(client)
@@ -135,7 +150,10 @@ def main():
             log.info(f"No existing files; fetching full history from {start_date}")
 
     if start_date > end_date:
-        log.info(f"Nothing to fetch: start {start_date} is after end {end_date}")
+        log.info(
+            f"Up to date: Databento's last available date is {end_date}, "
+            "already stored. Nothing to fetch."
+        )
         return
 
     log.info(f"Dataset: {DATASET}")

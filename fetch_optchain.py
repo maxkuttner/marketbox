@@ -58,9 +58,16 @@ def get_dataset_start(client: db.Historical) -> date:
     return datetime.fromisoformat(r["start"].replace("Z", "+00:00")).date()
 
 
-def get_dataset_end(client: db.Historical) -> date:
+def get_dataset_end(client: db.Historical, schema: str) -> date:
+    """Databento's available end (exclusive) for the given schema.
+
+    The daily bars lag the dataset-level range (which tracks higher-frequency
+    schemas like trades/mbo), so read the per-schema end to avoid overshooting
+    into data_schema_not_fully_available.
+    """
     r = client.metadata.get_dataset_range(dataset=DATASET)
-    return datetime.fromisoformat(r["end"].replace("Z", "+00:00")).date()
+    rng = r.get("schema", {}).get(schema, r)  # fall back to dataset-level range
+    return datetime.fromisoformat(rng["end"].replace("Z", "+00:00")).date()
 
 
 def estimate_cost(client: db.Historical, parent_symbol: str, schema: str, start: date, end: date) -> float:
@@ -158,7 +165,7 @@ def main():
     # end is always Databento's last available date for the dataset. Its range
     # end is exclusive, so it *is* the last available date; querying past it
     # raises data_start_after_available_end.
-    end_date = date.fromisoformat(args.end) if args.end else get_dataset_end(client)
+    end_date = date.fromisoformat(args.end) if args.end else get_dataset_end(client, args.schema)
 
     if args.full_history:
         start_date = date.fromisoformat(args.start) if args.start else get_dataset_start(client)

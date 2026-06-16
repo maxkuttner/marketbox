@@ -49,6 +49,9 @@ load_dotenv()
 EQUITY_DATASET = os.environ.get("DBN_EQUITY_DATASET", "ARCX.PILLAR")
 OPTION_DATASET = os.environ.get("DBN_OPTION_DATASET", "OPRA.PILLAR")
 
+# provider_code recorded in provider_instrument for everything this loader seeds.
+PROVIDER_CODE = "DATABENTO"
+
 # Optional EXCHANGE-code → venue MIC overrides, for cases where Databento's
 # `exchange` field isn't itself a seeded MIC (notably the OPRA SIP). Empty by
 # default; populate after inspecting real definition data.
@@ -243,6 +246,10 @@ def map_instrument(rec, asset_class="EQUITY"):
         "size_increment": lot if (lot and lot > 0) else 1,
         "lot_size": lot if (lot and lot > 0) else None,
         "contract_size": contract if contract and contract > 0 else 1,
+        # provider_instrument fields (Databento's view of this instrument)
+        "native_id": (str(int(rec["instrument_id"]))
+                      if rec.get("instrument_id") is not None else None),
+        "provider_exchange": str(rec.get("exchange") or "").strip() or None,
     }
 
 
@@ -278,6 +285,9 @@ DERIVATIVE_COLS = [
     "symbol", "venue", "underlying_symbol", "option_kind",
     "strike_price", "expiry_date", "activation_date",
 ]
+# Staged columns = instrument columns + the extras needed to also build the
+# Databento provider_instrument rows (joined back to instrument by symbol+venue).
+STAGE_COLS = INSTRUMENT_COLS + ["native_id", "provider_exchange"]
 
 
 def upsert(conn, instruments, derivatives):
@@ -291,13 +301,14 @@ def upsert(conn, instruments, derivatives):
             "symbol text, venue text, currency text, asset_class text,"
             "instrument_class text, name text, price_precision int,"
             "size_precision int, price_increment numeric, size_increment numeric,"
-            "lot_size numeric, contract_size numeric) ON COMMIT DROP"
+            "lot_size numeric, contract_size numeric,"
+            "native_id text, provider_exchange text) ON COMMIT DROP"
         )
         with cur.copy(
-            "COPY _stage_instrument (" + ",".join(INSTRUMENT_COLS) + ") FROM STDIN"
+            "COPY _stage_instrument (" + ",".join(STAGE_COLS) + ") FROM STDIN"
         ) as copy:
             for r in instruments:
-                copy.write_row(tuple(r[c] for c in INSTRUMENT_COLS))
+                copy.write_row(tuple(r[c] for c in STAGE_COLS))
 
         cur.execute(
             """
@@ -332,6 +343,31 @@ def upsert(conn, instruments, derivatives):
         )
         upserted = cur.fetchone()[0]
         skipped = len(instruments) - upserted
+
+        # --- provider_instrument: record Databento's symbology for each staged
+        # instrument that exists in the master (data-side mirror of broker_sync's
+        # broker_instrument). Join back to instrument by the (symbol, venue) key.
+        cur.execute(
+            """
+            WITH ins AS (
+                INSERT INTO provider_instrument
+                    (instrument_id, provider_code, provider_symbol,
+                     provider_exchange, native_id)
+                SELECT i.id, %s, s.symbol, s.provider_exchange, s.native_id
+                FROM _stage_instrument s
+                JOIN instrument i ON i.symbol = s.symbol AND i.venue = s.venue
+                ON CONFLICT (instrument_id, provider_code) DO UPDATE SET
+                    provider_symbol = EXCLUDED.provider_symbol,
+                    provider_exchange = EXCLUDED.provider_exchange,
+                    native_id = EXCLUDED.native_id,
+                    updated_at = now()
+                RETURNING 1
+            )
+            SELECT count(*) FROM ins
+            """,
+            (PROVIDER_CODE,),
+        )
+        provider_upserted = cur.fetchone()[0]
 
         # --- derivatives: stage -> upsert, resolving instrument_id (the option)
         # and underlying_id (the equity) entirely in SQL.
@@ -376,7 +412,7 @@ def upsert(conn, instruments, derivatives):
             )
             deriv_upserted = cur.fetchone()[0]
 
-    return upserted, skipped, deriv_upserted
+    return upserted, skipped, deriv_upserted, provider_upserted
 
 
 # --- main -----------------------------------------------------------------
@@ -429,12 +465,13 @@ def main():
     log.info(f"Upserting {len(instruments)} instrument(s), {len(derivatives)} derivative(s)...")
     conn = get_ods_conn()
     try:
-        upserted, skipped, deriv = upsert(conn, instruments, derivatives)
+        upserted, skipped, deriv, provider = upsert(conn, instruments, derivatives)
     finally:
         conn.close()
     log.info(
         f"seed_instruments done for {symbol}: instruments upserted={upserted} "
-        f"skipped(FK)={skipped}; derivatives upserted={deriv}"
+        f"skipped(FK)={skipped}; derivatives upserted={deriv}; "
+        f"provider_instrument upserted={provider}"
     )
     if skipped:
         log.warning(

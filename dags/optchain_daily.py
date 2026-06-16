@@ -6,19 +6,22 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from airflow.datasets import Dataset
 from airflow.operators.bash import BashOperator
 from airflow.decorators import dag
 
 PROJECT_ROOT = str(Path(os.environ.get("AIRFLOW_HOME", Path(__file__).parent.parent)))
 PYTHON       = str(Path(PROJECT_ROOT) / ".venv" / "bin" / "python")
 
-SCHEDULE = "0 6 * * *"
+# Triggered when instruments_daily finishes seeding, so the loader can resolve
+# symbol -> master instrument_id against a freshly minted universe.
+INSTRUMENTS = Dataset("marketbox://ods/instrument")
 SYMBOL   = "SPY"
 
 
 @dag(
     dag_id="optchain_daily",
-    schedule=SCHEDULE,
+    schedule=[INSTRUMENTS],
     start_date=datetime(2026, 5, 9, tzinfo=timezone.utc),
     catchup=False,
     tags=["marketbox", "options"],

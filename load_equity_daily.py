@@ -63,6 +63,33 @@ def get_conn() -> psycopg.Connection:
     )
 
 
+# Map of this loader's symbols to the master instrument_id. SPOT = cash equities;
+# the seed (seed_instruments.py) is the sole minter, keyed on (symbol, venue).
+INSTRUMENT_CLASS = "SPOT"
+
+
+def load_instrument_map(instrument_class: str) -> dict[str, int]:
+    """symbol -> master instrument_id, read from the `ods` instrument master.
+
+    The price tables key on the *master* id (ods.instrument.id), not Databento's
+    publisher id. We resolve here at load time; symbols with no active master row
+    (e.g. data predating the instrument universe) stay unmapped -> NULL.
+    """
+    host = os.environ.get("DB_HOST", "localhost")
+    port = os.environ.get("DB_PORT", "5432")
+    name = os.environ.get("ODS_DB", "ods")
+    user = os.environ.get("DB_USER")
+    password = os.environ.get("DB_PASSWORD")
+    with psycopg.connect(
+        host=host, port=int(port), dbname=name, user=user, password=password
+    ) as conn:
+        rows = conn.execute(
+            "SELECT symbol, id FROM instrument WHERE instrument_class = %s",
+            (instrument_class,),
+        ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
 def reset_table(conn: psycopg.Connection, table: str) -> None:
     with conn.transaction():
         conn.execute(f"TRUNCATE {table}")
@@ -74,7 +101,7 @@ def already_loaded(conn: psycopg.Connection) -> set[str]:
     return {r[0] for r in rows}
 
 
-def _iter_rows(df):
+def _iter_rows(df, id_map: dict[str, int]):
     import math
 
     cols = df.columns.tolist()
@@ -82,7 +109,7 @@ def _iter_rows(df):
         yield (
             row.ts_event,
             str(row.symbol),
-            int(row.instrument_id) if "instrument_id" in cols else None,
+            id_map.get(str(row.symbol)),  # master instrument_id, or NULL if unseeded
             float(row.open)   if "open"   in cols and not math.isnan(row.open)   else None,
             float(row.high)   if "high"   in cols and not math.isnan(row.high)   else None,
             float(row.low)    if "low"    in cols and not math.isnan(row.low)    else None,
@@ -91,7 +118,7 @@ def _iter_rows(df):
         )
 
 
-def load_file(conn: psycopg.Connection, path: Path, table: str) -> int:
+def load_file(conn: psycopg.Connection, path: Path, table: str, id_map: dict[str, int]) -> int:
     import databento as db
 
     store = db.DBNStore.from_file(str(path))
@@ -117,7 +144,7 @@ def load_file(conn: psycopg.Connection, path: Path, table: str) -> int:
         with cur.copy(
             f"COPY {staging} (ts_event, symbol, instrument_id, open, high, low, close, volume) FROM STDIN"
         ) as copy:
-            for row in _iter_rows(df):
+            for row in _iter_rows(df, id_map):
                 copy.write_row(row)
                 row_count += 1
 
@@ -175,6 +202,9 @@ def main():
     conn = get_conn()
     log.info("Connected to database")
 
+    id_map = load_instrument_map(INSTRUMENT_CLASS)
+    log.info(f"Loaded {len(id_map)} {INSTRUMENT_CLASS} instrument id(s) from ods")
+
     if args.reset:
         log.info(f"Resetting table {args.table}...")
         reset_table(conn, args.table)
@@ -192,7 +222,7 @@ def main():
     total_rows = 0
     for i, path in enumerate(pending, 1):
         log.info(f"[{i}/{len(pending)}] Loading {path.name}...")
-        row_count = load_file(conn, path, args.table)
+        row_count = load_file(conn, path, args.table, id_map)
         total_rows += row_count
         log.info(f"[{i}/{len(pending)}] {path.name}: {row_count:,} rows loaded")
 
